@@ -5,7 +5,6 @@ from flask import Flask, request, jsonify
 from flask_cors import CORS
 from flask_pymongo import PyMongo
 from datetime import datetime, timedelta
-from ai_engine import get_face_embedding, verify_match
 import jwt
 from functools import wraps
 from flask_bcrypt import Bcrypt
@@ -22,6 +21,19 @@ app.config["MONGO_URI"] = os.getenv("MONGO_URI", "mongodb+srv://ganeshbramhane07
 app.config["SECRET_KEY"] = os.getenv("SECRET_KEY", "super-secret-key-change-this-in-prod")
 mongo = PyMongo(app)
 bcrypt = Bcrypt(app)
+_ai_engine = None
+
+
+def get_ai_engine():
+    """
+    Lazy-load DeepFace/TensorFlow stack so the web server can bind PORT quickly
+    on platforms like Render.
+    """
+    global _ai_engine
+    if _ai_engine is None:
+        from ai_engine import get_face_embedding, verify_match
+        _ai_engine = (get_face_embedding, verify_match)
+    return _ai_engine
 
 def decode_image(base64_string):
     try:
@@ -54,6 +66,10 @@ def token_required(f):
     return decorated
 
 # --- ROUTES ---
+
+@app.route('/health', methods=['GET'])
+def health():
+    return jsonify({"status": "ok"}), 200
 
 @app.route('/api/auth/register', methods=['POST'])
 def register_user():
@@ -123,6 +139,7 @@ def register():
     if img is None:
         return jsonify({"error": "Image Error"}), 400
 
+    get_face_embedding, _ = get_ai_engine()
     embedding = get_face_embedding(img)
     if not embedding:
         return jsonify({"error": "Face not detected. Keep straight."}), 400
@@ -159,6 +176,7 @@ def mark_attendance():
     img = decode_image(data.get('image'))
     if img is None: return jsonify({"error": "Camera Error"}), 400
 
+    get_face_embedding, verify_match = get_ai_engine()
     live_emb = get_face_embedding(img)
     if not live_emb: return jsonify({"error": "No face"}), 400
 
