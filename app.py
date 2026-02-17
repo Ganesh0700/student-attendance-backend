@@ -18,7 +18,7 @@ app = Flask(__name__)
 # Allow Mobile Access
 CORS(app, resources={r"/*": {"origins": "*"}}) 
 
-app.config["MONGO_URI"] = os.getenv("MONGO_URI", "mongodb://localhost:27017/smart_attendance")
+app.config["MONGO_URI"] = os.getenv("MONGO_URI", "mongodb+srv://ganeshbramhane0700:Ganesh9093@cluster0.c3liorh.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0")
 app.config["SECRET_KEY"] = os.getenv("SECRET_KEY", "super-secret-key-change-this-in-prod")
 mongo = PyMongo(app)
 bcrypt = Bcrypt(app)

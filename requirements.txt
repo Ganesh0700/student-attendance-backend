@@ -5,6 +5,7 @@ flask-bcrypt
 pyjwt
 numpy
 deepface
-opencv-python
+opencv-python-headless
 tf-keras
 pillow
+gunicorn
