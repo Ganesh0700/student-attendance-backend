@@ -1,0 +1,10 @@
+flask
+flask-cors
+flask-pymongo
+flask-bcrypt
+pyjwt
+numpy
+deepface
+opencv-python
+tf-keras
+pillow

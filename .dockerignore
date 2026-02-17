@@ -1,0 +1,7 @@
+__pycache__/
+*.py[cod]
+*.db
+.venv/
+temp_processing/
+.env
+.git
