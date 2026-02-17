@@ -17,9 +17,10 @@ app = Flask(__name__)
 # Allow Mobile Access
 CORS(app, resources={r"/*": {"origins": "*"}}) 
 
-app.config["MONGO_URI"] = os.getenv("MONGO_URI", "mongodb+srv://ganeshbramhane0700:Ganesh9093@cluster0.c3liorh.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0")
+app.config["MONGO_URI"] = os.getenv("MONGO_URI", "mongodb://localhost:27017/smart_attendance")
 app.config["SECRET_KEY"] = os.getenv("SECRET_KEY", "super-secret-key-change-this-in-prod")
 mongo = PyMongo(app)
+db = mongo.db if mongo.db is not None else mongo.cx[os.getenv("MONGO_DB_NAME", "smart_attendance")]
 bcrypt = Bcrypt(app)
 _ai_engine = None
 
@@ -56,7 +57,7 @@ def token_required(f):
         
         try:
             data = jwt.decode(token, app.config['SECRET_KEY'], algorithms=["HS256"])
-            current_user = mongo.db.users.find_one({'email': data['email']})
+            current_user = db.users.find_one({'email': data['email']})
             if not current_user:
                 return jsonify({'message': 'User not found!'}), 401
         except Exception as e:
@@ -77,7 +78,7 @@ def register_user():
     hashed_password = bcrypt.generate_password_hash(data['password']).decode('utf-8')
     
     # Check if user exists
-    if mongo.db.users.find_one({"email": data['email']}):
+    if db.users.find_one({"email": data['email']}):
         return jsonify({"message": "User already exists"}), 400
 
     new_user = {
@@ -88,13 +89,13 @@ def register_user():
         "dept": DEPARTMENT_CODE,
         "created_at": datetime.now()
     }
-    mongo.db.users.insert_one(new_user)
+    db.users.insert_one(new_user)
     return jsonify({"message": "User registered successfully"}), 201
 
 @app.route('/api/auth/login', methods=['POST'])
 def login():
     data = request.json
-    user = mongo.db.users.find_one({"email": data['email']})
+    user = db.users.find_one({"email": data['email']})
     
     if user and bcrypt.check_password_hash(user['password'], data['password']):
         token = jwt.encode({
@@ -128,10 +129,10 @@ def register():
     if password and len(password) < 6:
         return jsonify({"error": "Password must be at least 6 characters."}), 400
 
-    if mongo.db.students.find_one({"email": email}):
+    if db.students.find_one({"email": email}):
         return jsonify({"error": "Student with this email is already registered."}), 400
 
-    existing_user = mongo.db.users.find_one({"email": email})
+    existing_user = db.users.find_one({"email": email})
     if existing_user and existing_user.get('role') != 'student':
         return jsonify({"error": "This email is already linked to a non-student account."}), 400
 
@@ -144,7 +145,7 @@ def register():
     if not embedding:
         return jsonify({"error": "Face not detected. Keep straight."}), 400
 
-    mongo.db.students.insert_one({
+    db.students.insert_one({
         "name": name,
         "email": email,
         "dept": dept,
@@ -156,7 +157,7 @@ def register():
     if not existing_user:
         final_password = password if password else "student123"
         hashed_password = bcrypt.generate_password_hash(final_password).decode('utf-8')
-        mongo.db.users.insert_one({
+        db.users.insert_one({
             "name": name,
             "email": email,
             "password": hashed_password,
@@ -180,7 +181,7 @@ def mark_attendance():
     live_emb = get_face_embedding(img)
     if not live_emb: return jsonify({"error": "No face"}), 400
 
-    students = list(mongo.db.students.find({}))
+    students = list(db.students.find({}))
     if not students: return jsonify({"error": "No students registered"}), 404
     
     known_embs = [s['embedding'] for s in students]
@@ -192,8 +193,8 @@ def mark_attendance():
         time_now = datetime.now().strftime("%H:%M:%S")
         
         # Check Duplicate
-        if not mongo.db.attendance.find_one({"student_id": str(student['_id']), "date": today}):
-            mongo.db.attendance.insert_one({
+        if not db.attendance.find_one({"student_id": str(student['_id']), "date": today}):
+            db.attendance.insert_one({
                 "student_id": str(student['_id']), 
                 "name": student['name'],
                 "date": today, 
@@ -207,15 +208,15 @@ def mark_attendance():
 @app.route('/api/stats', methods=['GET'])
 # @token_required # Optional: protect this if needed
 def get_stats():
-    total = mongo.db.students.count_documents({})
+    total = db.students.count_documents({})
     today = datetime.now().strftime("%Y-%m-%d")
-    present = mongo.db.attendance.count_documents({"date": today})
+    present = db.attendance.count_documents({"date": today})
     return jsonify({"total_students": total, "present_today": present})
 
 @app.route('/api/attendance_log', methods=['GET'])
 def get_logs():
     # Get last 10 logs
-    logs = list(mongo.db.attendance.find({}, {'_id': 0}).sort('_id', -1).limit(10))
+    logs = list(db.attendance.find({}, {'_id': 0}).sort('_id', -1).limit(10))
     return jsonify(logs)
 
 @app.route('/api/students', methods=['GET'])
@@ -224,7 +225,7 @@ def get_students(current_user):
     if current_user.get('role') not in ['hod', 'faculty']:
         return jsonify({"message": "Unauthorized"}), 403
 
-    total_sessions = len(mongo.db.attendance.distinct("date"))
+    total_sessions = len(db.attendance.distinct("date"))
 
     attendance_stats_pipeline = [
         {"$sort": {"date": -1, "time": -1}},
@@ -237,10 +238,10 @@ def get_students(current_user):
     ]
     attendance_stats = {
         item["_id"]: item
-        for item in mongo.db.attendance.aggregate(attendance_stats_pipeline)
+        for item in db.attendance.aggregate(attendance_stats_pipeline)
     }
 
-    students = list(mongo.db.students.find({}, {"name": 1, "email": 1, "dept": 1, "created_at": 1}))
+    students = list(db.students.find({}, {"name": 1, "email": 1, "dept": 1, "created_at": 1}))
     response = []
 
     for student in students:
@@ -272,8 +273,8 @@ def get_hod_dashboard(current_user):
     if current_user['role'] != 'hod':
         return jsonify({"message": "Unauthorized"}), 403
 
-    total_students = mongo.db.students.count_documents({})
-    total_faculty = mongo.db.users.count_documents({"role": "faculty"})
+    total_students = db.students.count_documents({})
+    total_faculty = db.users.count_documents({"role": "faculty"})
     today = datetime.now()
     today_str = today.strftime("%Y-%m-%d")
 
@@ -281,15 +282,15 @@ def get_hod_dashboard(current_user):
     dates = [(today - timedelta(days=i)).strftime("%Y-%m-%d") for i in range(6, -1, -1)]
     attendance_trend = []
     for date in dates:
-        day_count = mongo.db.attendance.count_documents({"date": date})
+        day_count = db.attendance.count_documents({"date": date})
         day_rate = round((day_count / total_students) * 100, 2) if total_students else 0
         attendance_trend.append({"date": date, "count": day_count, "rate": day_rate})
 
-    today_attendance = mongo.db.attendance.count_documents({"date": today_str})
+    today_attendance = db.attendance.count_documents({"date": today_str})
     today_attendance_rate = round((today_attendance / total_students) * 100, 2) if total_students else 0
 
     # Sessions are treated as unique attendance dates in system
-    session_dates = mongo.db.attendance.distinct("date")
+    session_dates = db.attendance.distinct("date")
     total_sessions = len(session_dates)
 
     # Present days per student
@@ -298,10 +299,10 @@ def get_hod_dashboard(current_user):
     ]
     present_by_student = {
         item["_id"]: item["present_days"]
-        for item in mongo.db.attendance.aggregate(pipeline)
+        for item in db.attendance.aggregate(pipeline)
     }
 
-    students = list(mongo.db.students.find({}, {"name": 1, "email": 1, "dept": 1}))
+    students = list(db.students.find({}, {"name": 1, "email": 1, "dept": 1}))
     defaulters = []
     all_percentages = []
 
@@ -325,7 +326,7 @@ def get_hod_dashboard(current_user):
 
     # Department-wise attendance view for today
     dept_map = {}
-    today_present_ids = set(mongo.db.attendance.distinct("student_id", {"date": today_str}))
+    today_present_ids = set(db.attendance.distinct("student_id", {"date": today_str}))
     for student in students:
         dept = (student.get("dept") or "Unassigned").strip() or "Unassigned"
         sid = str(student["_id"])
@@ -362,7 +363,7 @@ def get_hod_dashboard(current_user):
 @token_required
 def get_student_dashboard(current_user):
     # Find student record linked to this user email
-    student = mongo.db.students.find_one({"email": current_user['email']})
+    student = db.students.find_one({"email": current_user['email']})
 
     attendance_history = []
     attendance_percentage = 0
@@ -377,10 +378,10 @@ def get_student_dashboard(current_user):
     if student:
         student_id = str(student["_id"])
         attendance_history = list(
-            mongo.db.attendance.find({"student_id": student_id}, {"_id": 0}).sort("date", -1)
+            db.attendance.find({"student_id": student_id}, {"_id": 0}).sort("date", -1)
         )
 
-        all_session_dates = sorted(mongo.db.attendance.distinct("date"), reverse=True)
+        all_session_dates = sorted(db.attendance.distinct("date"), reverse=True)
         total_sessions = len(all_session_dates)
         present_days = len(attendance_history)
         attendance_percentage = round((present_days / total_sessions) * 100, 2) if total_sessions else 0
@@ -451,7 +452,7 @@ def apply_leave(current_user):
         "status": "Pending",
         "applied_on": datetime.now()
     }
-    mongo.db.leaves.insert_one(leave_app)
+    db.leaves.insert_one(leave_app)
     return jsonify({"message": "Leave Applied Successfully"}), 201
 
 @app.route('/api/leave/all', methods=['GET'])
@@ -460,13 +461,13 @@ def get_all_leaves(current_user):
     if current_user['role'] not in ['hod', 'faculty']:
         return jsonify({"message": "Unauthorized"}), 403
     
-    leaves = list(mongo.db.leaves.find({}, {'_id': 0}).sort('applied_on', -1))
+    leaves = list(db.leaves.find({}, {'_id': 0}).sort('applied_on', -1))
     return jsonify(leaves)
 
 @app.route('/api/leave/my', methods=['GET'])
 @token_required
 def get_my_leaves(current_user):
-    leaves = list(mongo.db.leaves.find({"email": current_user['email']}, {'_id': 0}).sort('applied_on', -1))
+    leaves = list(db.leaves.find({"email": current_user['email']}, {'_id': 0}).sort('applied_on', -1))
     return jsonify(leaves)
 
 @app.route('/api/leave/action', methods=['POST'])
@@ -478,7 +479,7 @@ def leave_action(current_user):
     data = request.json
     # In real app use _id, here using email + date for simplicity logic
     # Assuming data has identifier
-    mongo.db.leaves.update_one(
+    db.leaves.update_one(
         {"email": data['email'], "from_date": data['from_date']}, # risky matcher but ok for mvp
         {"$set": {"status": data['status'], "action_by": current_user['name']}}
     )

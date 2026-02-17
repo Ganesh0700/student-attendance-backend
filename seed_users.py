@@ -1,10 +1,10 @@
-from app import app, mongo, bcrypt
+from app import app, db, bcrypt
 from datetime import datetime
 
 def seed_users():
     with app.app_context():
         # Clear existing users (optional, be careful in prod)
-        # mongo.db.users.delete_many({}) 
+        # db.users.delete_many({}) 
         
         users = [
             {
@@ -30,7 +30,7 @@ def seed_users():
             }
         ]
 
-        normalized_students = mongo.db.students.update_many(
+        normalized_students = db.students.update_many(
             {"dept": {"$ne": "MCA"}},
             {"$set": {"dept": "MCA"}}
         )
@@ -38,14 +38,14 @@ def seed_users():
             print(f"Normalized {normalized_students.modified_count} existing student record(s) to MCA")
 
         for user in users:
-            existing = mongo.db.users.find_one({"email": user['email']})
+            existing = db.users.find_one({"email": user['email']})
             if not existing:
                 user['password'] = bcrypt.generate_password_hash(user['password']).decode('utf-8')
                 user['created_at'] = datetime.now()
-                mongo.db.users.insert_one(user)
+                db.users.insert_one(user)
                 print(f"Created user: {user['name']} ({user['email']})")
             else:
-                mongo.db.users.update_one(
+                db.users.update_one(
                     {"email": user['email']},
                     {"$set": {"dept": "MCA"}}
                 )
