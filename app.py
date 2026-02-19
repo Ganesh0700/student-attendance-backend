@@ -96,6 +96,16 @@ def health_db():
             "mongo_uri_masked": app.config["MONGO_URI"].split("@")[-1] if "@" in app.config["MONGO_URI"] else "localhost/local"
         }), 500
 
+@app.route('/api/seed', methods=['GET'])
+def manual_seed():
+    try:
+        from seed_users import seed_users
+        seed_users()
+        count = db.users.count_documents({})
+        return jsonify({"message": f"Seeding complete. Users: {count}", "status": "success"}), 200
+    except Exception as e:
+        return jsonify({"message": str(e), "status": "error"}), 500
+
 @app.route('/api/auth/register', methods=['POST'])
 def register_user():
     data = request.json
