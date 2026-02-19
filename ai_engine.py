@@ -27,7 +27,7 @@ def get_face_embedding(image_data):
         try:
             embedding_objs = DeepFace.represent(
                 img_path=temp_path,
-                model_name="Facenet",
+                model_name="VGG-Face",
                 detector_backend="opencv",
                 enforce_detection=True,
             )
@@ -46,7 +46,7 @@ def get_face_embedding(image_data):
             try:
                 embedding_objs = DeepFace.represent(
                     img_path=temp_path,
-                    model_name="Facenet",
+                    model_name="VGG-Face",
                     detector_backend="opencv",
                     enforce_detection=True,
                 )
@@ -61,7 +61,7 @@ def get_face_embedding(image_data):
         try:
             embedding_objs = DeepFace.represent(
                 img_path=temp_path,
-                model_name="Facenet",
+                model_name="VGG-Face",
                 detector_backend="opencv",
                 enforce_detection=False,
             )
