@@ -68,6 +68,10 @@ def token_required(f):
 
 # --- ROUTES ---
 
+@app.route('/', methods=['GET'])
+def root():
+    return jsonify({"message": "Backend is active"}), 200
+
 @app.route('/health', methods=['GET'])
 def health():
     return jsonify({"status": "ok"}), 200
