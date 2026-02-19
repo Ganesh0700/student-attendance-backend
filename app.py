@@ -76,6 +76,26 @@ def root():
 def health():
     return jsonify({"status": "ok"}), 200
 
+@app.route('/api/health/db', methods=['GET'])
+def health_db():
+    try:
+        # Ping the database
+        db.command('ping')
+        count = db.users.count_documents({})
+        return jsonify({
+            "status": "connected", 
+            "message": "MongoDB is reachable",
+            "user_count": count,
+            "mongo_uri_masked": app.config["MONGO_URI"].split("@")[-1] if "@" in app.config["MONGO_URI"] else "localhost/local"
+        }), 200
+    except Exception as e:
+        print(f"DB Check Failed: {e}")
+        return jsonify({
+            "status": "error", 
+            "message": str(e),
+            "mongo_uri_masked": app.config["MONGO_URI"].split("@")[-1] if "@" in app.config["MONGO_URI"] else "localhost/local"
+        }), 500
+
 @app.route('/api/auth/register', methods=['POST'])
 def register_user():
     data = request.json
