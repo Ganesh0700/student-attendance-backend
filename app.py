@@ -12,10 +12,21 @@ import os
 
 DEPARTMENT_CODE = "MCA"
 DEPARTMENT_FULL_NAME = "Master of Computer Applications"
+DEFAULT_CORS_ORIGINS = (
+    "http://localhost:5173,"
+    "http://127.0.0.1:5173,"
+    "https://student-attendance-frontend-dmg1.vercel.app,"
+    "https://.*\\.vercel\\.app"
+)
+
+
+def get_cors_origins():
+    raw = os.getenv("CORS_ORIGINS", DEFAULT_CORS_ORIGINS)
+    return [origin.strip() for origin in raw.split(",") if origin.strip()]
 
 app = Flask(__name__)
-# Allow Mobile Access
-CORS(app, resources={r"/*": {"origins": "*"}}) 
+app.url_map.strict_slashes = False
+CORS(app, resources={r"/api/*": {"origins": get_cors_origins()}})
 
 app.config["MONGO_URI"] = os.getenv("MONGO_URI", "mongodb://localhost:27017/smart_attendance")
 app.config["SECRET_KEY"] = os.getenv("SECRET_KEY", "super-secret-key-change-this-in-prod")
