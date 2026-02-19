@@ -23,13 +23,24 @@ def get_face_embedding(image_data):
     try:
         cv2.imwrite(temp_path, image_data)
 
+        # 1. Fast Path: Strict detection on normal image
+        try:
+            embedding_objs = DeepFace.represent(
+                img_path=temp_path,
+                model_name="Facenet",
+                detector_backend="opencv",
+                enforce_detection=True,
+            )
+            return embedding_objs[0]["embedding"]
+        except:
+            pass # Continue to robust search
+
+        # 2. Robust Path: Rotations
         attempts = [
-            ("normal", image_data),
             ("rotate_90", cv2.rotate(image_data, cv2.ROTATE_90_CLOCKWISE)),
             ("rotate_-90", cv2.rotate(image_data, cv2.ROTATE_90_COUNTERCLOCKWISE)),
         ]
 
-        # Strict pass
         for angle_name, img_variant in attempts:
             cv2.imwrite(temp_path, img_variant)
             try:
@@ -44,21 +55,21 @@ def get_face_embedding(image_data):
             except ValueError:
                 continue
 
-        # Fallback pass
-        for angle_name, img_variant in attempts:
-            cv2.imwrite(temp_path, img_variant)
-            try:
-                embedding_objs = DeepFace.represent(
-                    img_path=temp_path,
-                    model_name="Facenet",
-                    detector_backend="opencv",
-                    enforce_detection=False,
-                )
-                if embedding_objs and embedding_objs[0].get("embedding"):
-                    print(f"AI: fallback embedding used at angle={angle_name}")
-                    return embedding_objs[0]["embedding"]
-            except Exception:
-                continue
+        # 3. Last Resort: Fallback (Non-strict) on original image only
+        # We avoid running fallback on rotations to save time/memory
+        cv2.imwrite(temp_path, image_data)
+        try:
+            embedding_objs = DeepFace.represent(
+                img_path=temp_path,
+                model_name="Facenet",
+                detector_backend="opencv",
+                enforce_detection=False,
+            )
+            if embedding_objs and embedding_objs[0].get("embedding"):
+                print(f"AI: fallback embedding used at angle=normal")
+                return embedding_objs[0]["embedding"]
+        except Exception:
+            pass
 
         print("AI: face not detected in any angle")
         return None
@@ -76,26 +87,43 @@ def get_face_embedding(image_data):
 
 
 def verify_match(known_embeddings, live_embedding, threshold=0.50):
-    """Matches using cosine distance"""
+    """
+    Matches using vectorized cosine distance for O(1) complexity relative to loop overhead.
+    """
     if not known_embeddings or not live_embedding:
         return False, -1
 
+    # Convert to numpy arrays for vectorization
+    # known_matrix shape: (N, D)
+    # live_vec shape: (D,)
+    known_matrix = np.array(known_embeddings)
     live_vec = np.array(live_embedding)
-    best_score = 1.0
-    best_index = -1
 
-    for i, known_vec in enumerate(known_embeddings):
-        known_vec = np.array(known_vec)
-        a = np.matmul(known_vec, live_vec)
-        b = np.linalg.norm(known_vec) * np.linalg.norm(live_vec)
-        distance = 1 - (a / b)
+    # Compute Norms
+    # axis=1 computes norm for each row (student)
+    norm_known = np.linalg.norm(known_matrix, axis=1)
+    norm_live = np.linalg.norm(live_vec)
 
-        if distance < best_score:
-            best_score = distance
-            best_index = i
+    # Avoid division by zero
+    if norm_live == 0 or np.any(norm_known == 0):
+        return False, -1
+
+    # Dot Product: (N, D) dot (D,) -> (N,)
+    dot_products = np.dot(known_matrix, live_vec)
+
+    # Cosine Similarity: (N,)
+    similarities = dot_products / (norm_known * norm_live)
+
+    # Cosine Distance: (N,)
+    distances = 1 - similarities
+
+    # Find best match
+    best_index = np.argmin(distances)
+    best_score = distances[best_index]
 
     print(f"Match score: {best_score:.4f} (threshold: {threshold})")
+
     if best_score < threshold:
-        return True, best_index
+        return True, int(best_index)
 
     return False, -1

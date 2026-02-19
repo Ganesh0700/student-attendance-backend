@@ -68,9 +68,13 @@ def token_required(f):
 
 # --- ROUTES ---
 
+def get_ist_time():
+    """Returns current time in IST (UTC + 5:30)"""
+    return datetime.utcnow() + timedelta(hours=5, minutes=30)
+
 @app.route('/', methods=['GET'])
 def root():
-    return jsonify({"message": "Backend is active"}), 200
+    return jsonify({"message": "Backend is active", "time": get_ist_time().strftime("%Y-%m-%d %H:%M:%S")}), 200
 
 @app.route('/health', methods=['GET'])
 def health():
@@ -121,7 +125,7 @@ def register_user():
         "password": hashed_password,
         "role": data.get('role', 'student'), # student, faculty, hod
         "dept": DEPARTMENT_CODE,
-        "created_at": datetime.now()
+        "created_at": get_ist_time()
     }
     db.users.insert_one(new_user)
     return jsonify({"message": "User registered successfully"}), 201
@@ -137,7 +141,7 @@ def login():
             'role': user['role'],
             'name': user.get('name', ''),
             'dept': user.get('dept', ''),
-            'exp': datetime.utcnow() + timedelta(hours=24)
+            'exp': datetime.utcnow() + timedelta(hours=24) # JWT exp stays UTC standard usually
         }, app.config['SECRET_KEY'], algorithm="HS256")
         
         return jsonify({
@@ -184,7 +188,7 @@ def register():
         "email": email,
         "dept": dept,
         "embedding": embedding,
-        "created_at": datetime.now()
+        "created_at": get_ist_time()
     })
 
     # AUTO-CREATE STUDENT LOGIN ACCOUNT
@@ -197,7 +201,7 @@ def register():
             "password": hashed_password,
             "role": "student",
             "dept": dept,
-            "created_at": datetime.now()
+            "created_at": get_ist_time()
         })
 
     login_hint = "Use your selected password to login." if password else "Use default password 'student123' to login."
@@ -223,18 +227,24 @@ def mark_attendance():
     is_match, index = verify_match(known_embs, live_emb)
     if is_match:
         student = students[index]
-        today = datetime.now().strftime("%Y-%m-%d")
-        time_now = datetime.now().strftime("%H:%M:%S")
+        ist_now = get_ist_time()
+        today = ist_now.strftime("%Y-%m-%d")
+        time_now = ist_now.strftime("%H:%M:%S")
         
-        # Check Duplicate
-        if not db.attendance.find_one({"student_id": str(student['_id']), "date": today}):
-            db.attendance.insert_one({
-                "student_id": str(student['_id']), 
-                "name": student['name'],
-                "date": today, 
-                "time": time_now,
-                "status": "Present"
-            })
+        # Use upsert to prevent race conditions
+        db.attendance.update_one(
+            {"student_id": str(student['_id']), "date": today},
+            {
+                "$setOnInsert": {
+                    "student_id": str(student['_id']), 
+                    "name": student['name'],
+                    "date": today, 
+                    "time": time_now,
+                    "status": "Present"
+                }
+            },
+            upsert=True
+        )
         return jsonify({"match": True, "name": student['name']})
     
     return jsonify({"match": False, "message": "Unknown"}), 401
@@ -243,7 +253,7 @@ def mark_attendance():
 # @token_required # Optional: protect this if needed
 def get_stats():
     total = db.students.count_documents({})
-    today = datetime.now().strftime("%Y-%m-%d")
+    today = get_ist_time().strftime("%Y-%m-%d")
     present = db.attendance.count_documents({"date": today})
     return jsonify({"total_students": total, "present_today": present})
 
@@ -309,7 +319,7 @@ def get_hod_dashboard(current_user):
 
     total_students = db.students.count_documents({})
     total_faculty = db.users.count_documents({"role": "faculty"})
-    today = datetime.now()
+    today = get_ist_time()
     today_str = today.strftime("%Y-%m-%d")
 
     # Last 7 days trend
@@ -484,7 +494,7 @@ def apply_leave(current_user):
         "to_date": data.get('to_date'),
         "reason": data.get('reason'),
         "status": "Pending",
-        "applied_on": datetime.now()
+        "applied_on": get_ist_time()
     }
     db.leaves.insert_one(leave_app)
     return jsonify({"message": "Leave Applied Successfully"}), 201
