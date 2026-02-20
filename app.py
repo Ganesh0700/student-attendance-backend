@@ -17,12 +17,15 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # College and Department Configuration
-COLLEGE_NAME = "Vivekananda Institute of Professional Studies"
-COLLEGE_SHORT_NAME = "VIPS"
-COLLEGE_LOCATION = "Delhi, India"
+COLLEGE_NAME = "Trinity Academy of Engineering (TAE)"
+COLLEGE_SHORT_NAME = "TAE"
+COLLEGE_LOCATION = "Pune, India"
+COLLEGE_ADDRESS = "Sr. No. 25 & 27, Kondhwa-Saswad Road, Bopdev Ghat, Pune – 411048"
+PARENT_INSTITUTE = "KJ's Educational Institutes (KJEI)"
 DEPARTMENT_CODE = "MCA"
 DEPARTMENT_FULL_NAME = "Master of Computer Applications"
 COLLEGE_ESTABLISHED = "2000"
+DEVELOPER = "Rutuja Chakor (MCA-2nd Year)"
 
 # Enhanced CORS Configuration
 DEFAULT_CORS_ORIGINS = (
@@ -132,11 +135,14 @@ def get_college_info():
             "name": COLLEGE_NAME,
             "shortName": COLLEGE_SHORT_NAME,
             "location": COLLEGE_LOCATION,
+            "address": COLLEGE_ADDRESS,
+            "parentInstitute": PARENT_INSTITUTE,
             "department": {
                 "code": DEPARTMENT_CODE,
                 "name": DEPARTMENT_FULL_NAME
             },
             "established": COLLEGE_ESTABLISHED,
+            "developer": DEVELOPER,
             "features": [
                 "AI-Powered Face Recognition",
                 "Real-time Attendance Tracking",
