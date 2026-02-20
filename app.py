@@ -9,9 +9,22 @@ import jwt
 from functools import wraps
 from flask_bcrypt import Bcrypt
 import os
+import logging
+from werkzeug.middleware.proxy_fix import ProxyFix
 
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# College and Department Configuration
+COLLEGE_NAME = "Vivekananda Institute of Professional Studies"
+COLLEGE_SHORT_NAME = "VIPS"
+COLLEGE_LOCATION = "Delhi, India"
 DEPARTMENT_CODE = "MCA"
 DEPARTMENT_FULL_NAME = "Master of Computer Applications"
+COLLEGE_ESTABLISHED = "2000"
+
+# Enhanced CORS Configuration
 DEFAULT_CORS_ORIGINS = (
     "http://localhost:5173,"
     "http://127.0.0.1:5173,"
@@ -19,17 +32,33 @@ DEFAULT_CORS_ORIGINS = (
     "https://.*\\.vercel\\.app"
 )
 
-
 def get_cors_origins():
     raw = os.getenv("CORS_ORIGINS", DEFAULT_CORS_ORIGINS)
     return [origin.strip() for origin in raw.split(",") if origin.strip()]
 
+# Initialize Flask App
 app = Flask(__name__)
 app.url_map.strict_slashes = False
+
+# Security Headers
+@app.after_request
+def after_request(response):
+    response.headers['X-Content-Type-Options'] = 'nosniff'
+    response.headers['X-Frame-Options'] = 'DENY'
+    response.headers['X-XSS-Protection'] = '1; mode=block'
+    response.headers['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains'
+    return response
+
+# CORS Configuration
 CORS(app, resources={r"/api/*": {"origins": get_cors_origins()}})
 
+# Configuration with Security
 app.config["MONGO_URI"] = os.getenv("MONGO_URI", "mongodb://localhost:27017/smart_attendance")
-app.config["SECRET_KEY"] = os.getenv("SECRET_KEY", "super-secret-key-change-this-in-prod")
+app.config["SECRET_KEY"] = os.getenv("SECRET_KEY", "your-super-secret-key-change-this-in-production-2024")
+app.config["JWT_ACCESS_TOKEN_EXPIRES"] = timedelta(hours=24)
+app.config["JWT_REFRESH_TOKEN_EXPIRES"] = timedelta(days=30)
+
+# Database Setup
 mongo = PyMongo(app)
 db = mongo.db if mongo.db is not None else mongo.cx[os.getenv("MONGO_DB_NAME", "smart_attendance")]
 bcrypt = Bcrypt(app)
@@ -38,13 +67,17 @@ _ai_engine = None
 
 def get_ai_engine():
     """
-    Lazy-load DeepFace/TensorFlow stack so the web server can bind PORT quickly
-    on platforms like Render.
+    Lazy-load OpenCV face detection engine for faster startup
     """
     global _ai_engine
     if _ai_engine is None:
-        from ai_engine import get_face_embedding, verify_match
-        _ai_engine = (get_face_embedding, verify_match)
+        try:
+            from ai_engine import get_face_embedding, verify_match
+            _ai_engine = (get_face_embedding, verify_match)
+            logger.info("✓ AI Engine loaded successfully")
+        except Exception as e:
+            logger.error(f"✗ Error loading AI Engine: {e}")
+            _ai_engine = None
     return _ai_engine
 
 def decode_image(base64_string):
@@ -90,6 +123,30 @@ def root():
 @app.route('/health', methods=['GET'])
 def health():
     return jsonify({"status": "ok"}), 200
+
+@app.route('/api/college/info', methods=['GET'])
+def get_college_info():
+    """Returns college information for frontend display"""
+    try:
+        return jsonify({
+            "name": COLLEGE_NAME,
+            "shortName": COLLEGE_SHORT_NAME,
+            "location": COLLEGE_LOCATION,
+            "department": {
+                "code": DEPARTMENT_CODE,
+                "name": DEPARTMENT_FULL_NAME
+            },
+            "established": COLLEGE_ESTABLISHED,
+            "features": [
+                "AI-Powered Face Recognition",
+                "Real-time Attendance Tracking",
+                "Advanced Analytics Dashboard",
+                "Mobile-Friendly Interface"
+            ]
+        }), 200
+    except Exception as e:
+        logger.error(f"Error in college info: {e}")
+        return jsonify({"error": "Failed to fetch college info"}), 500
 
 @app.route('/api/health/db', methods=['GET'])
 def health_db():
@@ -544,6 +601,20 @@ def leave_action(current_user):
 
 
 if __name__ == '__main__':
+    # Apply proxy fix for proper headers
+    app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1)
+    
     port = int(os.getenv("PORT", "5000"))
     debug = os.getenv("FLASK_DEBUG", "0") == "1"
-    app.run(host='0.0.0.0', port=port, debug=debug)
+    
+    logger.info(f"🚀 Starting Smart Attendance System")
+    logger.info(f"📍 College: {COLLEGE_NAME}")
+    logger.info(f"🎓 Department: {DEPARTMENT_FULL_NAME}")
+    logger.info(f"🌐 Port: {port}")
+    logger.info(f"🔧 Debug: {debug}")
+    
+    try:
+        app.run(host='0.0.0.0', port=port, debug=debug, threaded=True)
+    except Exception as e:
+        logger.error(f"❌ Failed to start server: {e}")
+        raise
