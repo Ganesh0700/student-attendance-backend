@@ -4,8 +4,6 @@ flask-pymongo
 flask-bcrypt
 pyjwt
 numpy
-deepface
 opencv-python-headless
-tf-keras
 pillow
 gunicorn
